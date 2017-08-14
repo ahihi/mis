@@ -6,6 +6,7 @@ module Mis
     ) where
 
 import Control.Applicative
+import Control.Concurrent.BroadcastChan
 import Control.Monad
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Reader
@@ -13,11 +14,15 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Aeson
 import Data.IORef
 import Data.Text (Text)
+import Data.Time
 import GHC.Generics
+import Network.HTTP.Types
 import Network.Wai
 import Network.Wai.Handler.Warp
+import Network.Wai.Handler.WebSockets
 import Servant
 import Servant.API
+import qualified Network.WebSockets as WS
 
 data GpsInfo = GpsInfo
   { latitude :: Double
@@ -25,12 +30,14 @@ data GpsInfo = GpsInfo
   , accuracy :: Double
   , direction :: Double
   , speed :: Double
+  , time :: UTCTime
   } deriving (Eq, Show, Generic)
 
 instance ToJSON GpsInfo
 
 data Environment = Environment
   { gpsInfoRef :: IORef GpsInfo
+  , channel :: BroadcastChan In GpsInfo
   }
 
 type MisHandler = ReaderT Environment Handler
@@ -56,16 +63,18 @@ type WriteGpsApi = "writeGps"
   :> QueryParam "accuracy" Double
   :> QueryParam "direction" Double
   :> QueryParam "speed" Double
-  :> QueryParam "time" String
+  :> QueryParam "time" UTCTime
   :> Get '[JSON] WriteGpsResult
 
-writeGps :: Maybe Double -> Maybe Double -> Maybe Double -> Maybe Double -> Maybe Double -> Maybe String -> MisHandler WriteGpsResult
+writeGps :: Maybe Double -> Maybe Double -> Maybe Double -> Maybe Double
+         -> Maybe Double -> Maybe UTCTime -> MisHandler WriteGpsResult
 writeGps (Just lat) (Just long) (Just acc) (Just dir) (Just spd) (Just t) = do
   liftIO $ print acc >> print dir >> print spd >> print t
   
   ref <- gpsInfoRef <$> ask
+  chan <- channel <$> ask
 
-  let updateGpsInfo info = (info', ())
+  let updateGpsInfo info = (info', info')
         where
           info' = info
             { latitude = lat
@@ -73,9 +82,12 @@ writeGps (Just lat) (Just long) (Just acc) (Just dir) (Just spd) (Just t) = do
             , accuracy = acc
             , direction = dir
             , speed = spd
+            , time = t
             }
   
-  liftIO $ atomicModifyIORef' ref updateGpsInfo 
+  liftIO $ do
+    gpsInfo <- atomicModifyIORef' ref updateGpsInfo 
+    writeBChan chan gpsInfo 
 
   return $ WriteGpsResult "ok"
 writeGps lat long acc dir spd t = do
@@ -89,7 +101,7 @@ writeGps lat long acc dir spd t = do
     print t
     
   return $ WriteGpsResult "error"
-
+    
 type MisApi = ReadGpsApi :<|> WriteGpsApi
 
 misApi :: Proxy MisApi
@@ -103,17 +115,44 @@ server env = enter nat handler
     nat :: MisHandler :~> Handler
     nat = runReaderTNat env
 
+listenerApp :: Environment -> Application
+listenerApp env = websocketsOr WS.defaultConnectionOptions wsApp backupApp
+  where
+    wsApp pending = do
+      conn <- WS.acceptRequest pending
+      WS.forkPingThread conn 30
+  
+      let inChan = channel env
+      chan <- newBChanListener inChan
+  
+      forever $ do
+        gpsInfo <- readBChan chan
+        WS.sendTextData conn $ encode gpsInfo
+
+    backupApp _ respond = respond $ responseLBS status400 [] "nyoro~n"
+
+misApiWs :: Proxy (MisApi :<|> "ws" :> Raw)
+misApiWs = Proxy
+
 app :: Environment -> Application
-app env = serve misApi $ server env
+app env = serve misApiWs $ server env :<|> Tagged (listenerApp env)
 
 runApp :: IO ()
 runApp = do
+  currentTime <- getCurrentTime
   ref <- newIORef $ GpsInfo
     { latitude = 0/0
     , longitude = 0/0
     , accuracy = 0/0
     , direction = 0/0
     , speed = 0/0
+    , time = currentTime
     }
-  let env = Environment ref
+  chan <- newBroadcastChan
+  
+  let env = Environment
+            { gpsInfoRef = ref
+            , channel = chan
+            }
+            
   run 8081 $ app env

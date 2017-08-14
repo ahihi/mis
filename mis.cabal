@@ -18,12 +18,17 @@ library
   exposed-modules:     Mis
   build-depends:       base >= 4.7 && < 5
                      , aeson == 1.1.*
+                     , broadcast-chan == 0.1.*
+                     , http-types == 0.9.*
                      , servant == 0.11.*
                      , servant-server == 0.11.*
                      , text == 1.2.*
+                     , time == 1.6.*
                      , transformers == 0.5.*
                      , wai == 3.2.*
+                     , wai-websockets == 3.0.*
                      , warp == 3.2.*
+                     , websockets == 0.10.*
   default-language:    Haskell2010
 
 executable mis-exe
