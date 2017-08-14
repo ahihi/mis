@@ -22,6 +22,9 @@ import Servant.API
 data GpsInfo = GpsInfo
   { latitude :: Double
   , longitude :: Double
+  , accuracy :: Double
+  , direction :: Double
+  , speed :: Double
   } deriving (Eq, Show, Generic)
 
 instance ToJSON GpsInfo
@@ -50,12 +53,15 @@ readGps = do
 type WriteGpsApi = "writeGps"
   :> QueryParam "latitude" Double
   :> QueryParam "longitude" Double
+  :> QueryParam "accuracy" Double
+  :> QueryParam "direction" Double
+  :> QueryParam "speed" Double
+  :> QueryParam "time" String
   :> Get '[JSON] WriteGpsResult
 
-writeGps :: Maybe Double -> Maybe Double -> MisHandler WriteGpsResult
-writeGps (Just lat) (Just long) = do
-  liftIO $ print lat
-  liftIO $ print long
+writeGps :: Maybe Double -> Maybe Double -> Maybe Double -> Maybe Double -> Maybe Double -> Maybe String -> MisHandler WriteGpsResult
+writeGps (Just lat) (Just long) (Just acc) (Just dir) (Just spd) (Just t) = do
+  liftIO $ print acc >> print dir >> print spd >> print t
   
   ref <- gpsInfoRef <$> ask
 
@@ -64,12 +70,24 @@ writeGps (Just lat) (Just long) = do
           info' = info
             { latitude = lat
             , longitude = long
+            , accuracy = acc
+            , direction = dir
+            , speed = spd
             }
   
   liftIO $ atomicModifyIORef' ref updateGpsInfo 
 
   return $ WriteGpsResult "ok"
-writeGps _ _ = do
+writeGps lat long acc dir spd t = do
+  liftIO $ do
+    putStrLn "error"
+    print lat
+    print long
+    print acc
+    print dir
+    print spd
+    print t
+    
   return $ WriteGpsResult "error"
 
 type MisApi = ReadGpsApi :<|> WriteGpsApi
@@ -90,6 +108,12 @@ app env = serve misApi $ server env
 
 runApp :: IO ()
 runApp = do
-  ref <- newIORef $ GpsInfo { latitude = 0/0, longitude = 0/0 }
+  ref <- newIORef $ GpsInfo
+    { latitude = 0/0
+    , longitude = 0/0
+    , accuracy = 0/0
+    , direction = 0/0
+    , speed = 0/0
+    }
   let env = Environment ref
   run 8081 $ app env
