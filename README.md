@@ -2,6 +2,8 @@
 
 An HTTP server for tracking the location of a single device. Designed for use with [GPS Logger for Android](https://play.google.com/store/apps/details?id=com.mendhak.gpslogger).
 
+![Screenshot](https://static.foldplop.com/misc/mis1.png)
+
 ## Build & run
 
 Using [Stack](https://www.haskellstack.org):

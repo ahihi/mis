@@ -124,18 +124,31 @@ listenerApp env = websocketsOr WS.defaultConnectionOptions wsApp backupApp
   
       let inChan = channel env
       chan <- newBChanListener inChan
+
+      let ref = gpsInfoRef env
+      initialGpsInfo <- readIORef ref
+
+      let sendGpsInfo = WS.sendTextData conn . encode
+      sendGpsInfo initialGpsInfo
   
       forever $ do
         gpsInfo <- readBChan chan
-        WS.sendTextData conn $ encode gpsInfo
+        sendGpsInfo gpsInfo
 
     backupApp _ respond = respond $ responseLBS status400 [] "nyoro~n"
 
-misApiWs :: Proxy (MisApi :<|> "ws" :> Raw)
-misApiWs = Proxy
+type FullApi = MisApi :<|> "ws" :> Raw :<|> Raw
+
+fullApi :: Proxy FullApi
+fullApi = Proxy
 
 app :: Environment -> Application
-app env = serve misApiWs $ server env :<|> Tagged (listenerApp env)
+app env = serve fullApi combinedServer
+  where
+    combinedServer :: Server FullApi
+    combinedServer = server env
+                     :<|> Tagged (listenerApp env)
+                     :<|> serveDirectoryFileServer "static"
 
 runApp :: IO ()
 runApp = do
