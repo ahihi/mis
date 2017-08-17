@@ -10,20 +10,21 @@ Using [Stack](https://www.haskellstack.org):
 
 ````
 $ stack build
-$ stack exec mis-exe
+$ MIS_PORT=… MIS_WRITE_KEY=… stack exec mis-exe
 ````
 
-The server will listen on localhost:8081. Put Nginx or something in front of it to expose it to the outside world.
+`MIS_PORT`: port to listen on  
+`MIS_WRITE_KEY`: key required to write GPS data
+
+The server will listen on localhost. Put Nginx or something in front of it to expose it to the outside world.
 
 ## Writing GPS data
 
 In GPS Logger for Android, set your custom URL to:
 
 ````
-https://<your domain>/writeGps?latitude=%LAT&longitude=%LON&direction=%DIR&accuracy=%ACC&speed=%SPD&time=%TIME
+https://<your domain>/writeGps?latitude=%LAT&longitude=%LON&direction=%DIR&accuracy=%ACC&speed=%SPD&time=%TIME&key=<your write key>
 ````
-
-TODO: Require a secret key for writing
 
 ## Reading GPS data
 

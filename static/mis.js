@@ -52,6 +52,7 @@ window.onload = function() {
 		    fillOpacity: 0.5,
 		    radius: msg.accuracy
 		}).addTo(map);
+		map.setView([msg.latitude, msg.longitude]);
 	    } else {
 		circle.setRadius(msg.accuracy);
 		circle.slideTo([msg.latitude, msg.longitude], {

@@ -14,15 +14,18 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Aeson
 import Data.IORef
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Time
 import GHC.Generics
 import Network.HTTP.Types
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Network.Wai.Handler.WebSockets
+import qualified Network.WebSockets as WS
 import Servant
 import Servant.API
-import qualified Network.WebSockets as WS
+import System.Environment
+import System.Exit
 
 data GpsInfo = GpsInfo
   { latitude :: Double
@@ -38,6 +41,7 @@ instance ToJSON GpsInfo
 data Environment = Environment
   { gpsInfoRef :: IORef GpsInfo
   , channel :: BroadcastChan In GpsInfo
+  , writeKey :: Text
   }
 
 type MisHandler = ReaderT Environment Handler
@@ -64,33 +68,38 @@ type WriteGpsApi = "writeGps"
   :> QueryParam "direction" Double
   :> QueryParam "speed" Double
   :> QueryParam "time" UTCTime
+  :> QueryParam "key" Text
   :> Get '[JSON] WriteGpsResult
 
 writeGps :: Maybe Double -> Maybe Double -> Maybe Double -> Maybe Double
-         -> Maybe Double -> Maybe UTCTime -> MisHandler WriteGpsResult
-writeGps (Just lat) (Just long) (Just acc) (Just dir) (Just spd) (Just t) = do
+         -> Maybe Double -> Maybe UTCTime -> Maybe Text -> MisHandler WriteGpsResult
+writeGps (Just lat) (Just long) (Just acc) (Just dir) (Just spd) (Just t) (Just key') = do
   liftIO $ print acc >> print dir >> print spd >> print t
   
   ref <- gpsInfoRef <$> ask
   chan <- channel <$> ask
+  key <- writeKey <$> ask
 
-  let updateGpsInfo info = (info', info')
-        where
-          info' = info
-            { latitude = lat
-            , longitude = long
-            , accuracy = acc
-            , direction = dir
-            , speed = spd
-            , time = t
-            }
+  if key' == key
+    then do
+      let updateGpsInfo info = (info', info')
+            where
+              info' = info
+                { latitude = lat
+                , longitude = long
+                , accuracy = acc
+                , direction = dir
+                , speed = spd
+                , time = t
+                }
   
-  liftIO $ do
-    gpsInfo <- atomicModifyIORef' ref updateGpsInfo 
-    writeBChan chan gpsInfo 
+      liftIO $ do
+        gpsInfo <- atomicModifyIORef' ref updateGpsInfo 
+        writeBChan chan gpsInfo 
 
-  return $ WriteGpsResult "ok"
-writeGps lat long acc dir spd t = do
+      return $ WriteGpsResult "ok"
+    else return $ WriteGpsResult "wrong key"
+writeGps lat long acc dir spd t key' = do
   liftIO $ do
     putStrLn "error"
     print lat
@@ -99,6 +108,7 @@ writeGps lat long acc dir spd t = do
     print dir
     print spd
     print t
+    print key'
     
   return $ WriteGpsResult "error"
     
@@ -152,6 +162,9 @@ app env = serve fullApi combinedServer
 
 runApp :: IO ()
 runApp = do
+  port <- parsePort =<< requireEnv "MIS_PORT"
+  key <- requireEnv "MIS_WRITE_KEY"
+  
   currentTime <- getCurrentTime
   ref <- newIORef $ GpsInfo
     { latitude = 0/0
@@ -166,6 +179,22 @@ runApp = do
   let env = Environment
             { gpsInfoRef = ref
             , channel = chan
+            , writeKey = Text.pack key
             }
             
-  run 8081 $ app env
+  run port $ app env
+  where
+    requireEnv var = do
+      valueMay <- lookupEnv var
+      case valueMay of
+        Just value -> return value
+        Nothing -> do
+          putStrLn $ "Environment variable not provided: " ++ var
+          exitFailure
+      
+    parsePort str = case (reads :: ReadS Port) str of
+      [(port, "")] -> return port
+      _ -> do
+        putStrLn $ "Invalid port: " ++ str
+        exitFailure
+      
