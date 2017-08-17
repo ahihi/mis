@@ -1,5 +1,6 @@
 var MAP_CENTER = [60.1699, 24.9384];
 var MAP_ZOOM = 13.5;
+var SLIDE_DURATION = 500;
 
 window.onload = function() {
     var map_div = document.querySelector("#map");
@@ -47,14 +48,14 @@ window.onload = function() {
 	    if(circle === undefined) {
 		circle = L.circle([msg.latitude, msg.longitude], {
 		    color: "#FF0000",
-		    fillColor: "#FF0033",
+		    fillColor: "#FF0000",
 		    fillOpacity: 0.5,
 		    radius: msg.accuracy
 		}).addTo(map);
 	    } else {
 		circle.setRadius(msg.accuracy);
 		circle.slideTo([msg.latitude, msg.longitude], {
-		    duration: 500
+		    duration: SLIDE_DURATION
 		});
 	    }
 	};
@@ -63,4 +64,34 @@ window.onload = function() {
     set_map(false);
     
     open_websocket();
+
+    if("geolocation" in navigator) {
+	var user_circle = undefined;
+	
+	var geo_watch_id = navigator.geolocation.watchPosition(
+	    function(pos) {
+		console.log(pos);
+		if(user_circle === undefined) {
+		    user_circle = L.circle([pos.coords.latitude, pos.coords.longitude], {
+			color: "#0000FF",
+			fillColor: "#0000FF",
+			fillOpacity: 0.5,
+			radius: pos.coords.accuracy
+		    }).addTo(map);
+		} else {
+		    user_circle.setRadius(pos.coords.accuracy);
+		    user_circle.slideTo([pos.coords.latitude, pos.coords.longitude], {
+			duration: SLIDE_DURATION
+		    })
+		}
+	    },
+	    function(err) {
+		alert(err.message);
+	    },
+	    {
+		enableHighAccuracy: true,
+		timeout: 5000
+	    }
+	);
+    }
 };
