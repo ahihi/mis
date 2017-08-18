@@ -87,10 +87,10 @@ window.onload = function() {
 		}
 	    },
 	    function(err) {
-		alert(err.message);
+		console.error("watchPosition: " + err.message);
 	    },
 	    {
-		enableHighAccuracy: true,
+		//enableHighAccuracy: true,
 		timeout: 5000
 	    }
 	);
